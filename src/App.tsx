@@ -1,7 +1,6 @@
-import React from "react";
-import KitBuilder from "./pages/KitBuilder";
+ import KitBuilder from "./pages/KitBuilder";
 
-function App(): JSX.Element {
+function App(){
   return <KitBuilder />;
 }
 

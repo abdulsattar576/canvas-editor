@@ -12,7 +12,7 @@ type Swatch = {
 
 const IMAGE_SRC = "/shirt.webp";
 
-export default function KitBuilder(): JSX.Element {
+export default function KitBuilder()  {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
