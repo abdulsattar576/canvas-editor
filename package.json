@@ -10,12 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "colorthief": "^3.4.0",
+    "fabric": "^7.4.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/colorthief": "^2.6.1",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

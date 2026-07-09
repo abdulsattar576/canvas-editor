@@ -1,127 +1,168 @@
 import { useEffect, useRef, useState } from "react";
+import { Canvas, FabricImage, IText } from "fabric";
 import "./KitBuilder.css";
 
-type ToolItemType =
-  | "frontLogo"
-  | "frontName"
-  | "sponsor"
-  | "backName"
-  | "backNumber";
-
-type ToolItem = {
-  id: ToolItemType;
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-};
+type RGB = [number, number, number];
 
 type Swatch = {
   hex: string;
-  rgb: [number, number, number];
+  rgb: RGB;
+  count: number;
 };
 
 const IMAGE_SRC = "/shirt.webp";
 
-const DEFAULT_ITEMS: Record<ToolItemType, ToolItem> = {
-  frontLogo: {
-    id: "frontLogo",
-    x: 150,
-    y: 155,
-    width: 55,
-    height: 55,
-  },
-  frontName: {
-    id: "frontName",
-    x: 145,
-    y: 235,
-  },
-  sponsor: {
-    id: "sponsor",
-    x: 145,
-    y: 285,
-  },
-  backName: {
-    id: "backName",
-    x: 462,
-    y: 175,
-  },
-  backNumber: {
-    id: "backNumber",
-    x: 462,
-    y: 295,
-  },
-};
-
 export default function KitBuilder(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const baseImageRef = useRef<HTMLImageElement | null>(null);
-  const editedImageRef = useRef<ImageData | null>(null);
-  const logoImageRef = useRef<HTMLImageElement | null>(null);
+  const fabricRef = useRef<Canvas | null>(null);
+  const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const workingCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [swatches, setSwatches] = useState<Swatch[]>([]);
   const [selectedSwatch, setSelectedSwatch] = useState<Swatch | null>(null);
-  const [replaceColor, setReplaceColor] = useState<string>("#ff0000");
-  const [tolerance, setTolerance] = useState<number>(75);
-
-  const [frontName, setFrontName] = useState<string>("PLAYER");
-  const [sponsorText, setSponsorText] = useState<string>("SPONSOR");
-  const [backName, setBackName] = useState<string>("PLAYER");
-  const [backNumber, setBackNumber] = useState<string>("10");
-
-  const [items, setItems] =
-    useState<Record<ToolItemType, ToolItem>>(DEFAULT_ITEMS);
-
-  const [draggingId, setDraggingId] = useState<ToolItemType | null>(null);
+  const [replacementColor, setReplacementColor] = useState<string>("#e5252a");
+  const [tolerance, setTolerance] = useState<number>(80);
+  const [zoom, setZoom] = useState<number>(1);
+  const [status, setStatus] = useState<string>("Loading editor...");
 
   useEffect(() => {
-    const img = new Image();
-    img.src = IMAGE_SRC;
-    img.onload = () => {
-      baseImageRef.current = img;
+    setupEditor();
 
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (!canvas || !ctx) return;
-
-      canvas.width = img.width;
-      canvas.height = img.height;
-
-      ctx.drawImage(img, 0, 0);
-      editedImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-      extractDominantColors();
-      drawCanvas();
+    return () => {
+      fabricRef.current?.dispose();
     };
   }, []);
 
-  useEffect(() => {
-    drawCanvas();
-  }, [frontName, sponsorText, backName, backNumber, items]);
+  const setupEditor = async (): Promise<void> => {
+    if (!canvasRef.current) return;
+
+    const fabricCanvas = new Canvas(canvasRef.current, {
+      width: 1000,
+      height: 720,
+      backgroundColor: "#ffffff",
+      preserveObjectStacking: true,
+      selection: true,
+    });
+
+    fabricRef.current = fabricCanvas;
+
+    const image = new Image();
+    image.src = IMAGE_SRC;
+
+    image.onload = async () => {
+      originalImageRef.current = image;
+
+      const workingCanvas = document.createElement("canvas");
+      workingCanvas.width = image.width;
+      workingCanvas.height = image.height;
+
+      const ctx = workingCanvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.drawImage(image, 0, 0);
+      workingCanvasRef.current = workingCanvas;
+
+      await updateBackgroundFromWorkingCanvas();
+      extractAndSetColors();
+      addDefaultObjects();
+
+      setStatus("Editor ready. Select a color or click the mockup.");
+    };
+
+    image.onerror = () => {
+      setStatus("Image not found. Please add public/shirt.webp.");
+    };
+  };
+
+  const updateBackgroundFromWorkingCanvas = async (): Promise<void> => {
+    const fabricCanvas = fabricRef.current;
+    const workingCanvas = workingCanvasRef.current;
+
+    if (!fabricCanvas || !workingCanvas) return;
+
+    const url = workingCanvas.toDataURL("image/png");
+    const backgroundImage = await FabricImage.fromURL(url);
+
+    const scale = Math.min(
+      fabricCanvas.getWidth() / backgroundImage.width!,
+      fabricCanvas.getHeight() / backgroundImage.height!
+    );
+
+    backgroundImage.set({
+      left: fabricCanvas.getWidth() / 2,
+      top: fabricCanvas.getHeight() / 2,
+      originX: "center",
+      originY: "center",
+      scaleX: scale,
+      scaleY: scale,
+      selectable: false,
+      evented: false,
+    });
+
+    fabricCanvas.backgroundImage = backgroundImage;
+    fabricCanvas.renderAll();
+  };
+
+  const addDefaultObjects = (): void => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const frontName = createText("PLAYER", 270, 330, 24);
+    const sponsor = createText("SPONSOR", 270, 375, 30);
+    const backName = createText("SATTAR", 720, 245, 38);
+    const backNumber = createText("40", 720, 350, 96);
+
+    canvas.add(frontName, sponsor, backName, backNumber);
+    canvas.renderAll();
+  };
+
+  const createText = (
+    text: string,
+    left: number,
+    top: number,
+    fontSize: number
+  ): IText => {
+    return new IText(text, {
+      left,
+      top,
+      fontSize,
+      fill: "#ffffff",
+      stroke: "rgba(0,0,0,0.35)",
+      strokeWidth: 1.5,
+      fontWeight: "bold",
+      fontFamily: "Arial",
+      originX: "center",
+      originY: "center",
+      cornerColor: "#e5252a",
+      borderColor: "#e5252a",
+      transparentCorners: false,
+    });
+  };
+
+  const clamp = (value: number): number => {
+    return Math.max(0, Math.min(255, Math.round(value)));
+  };
 
   const rgbToHex = (r: number, g: number, b: number): string => {
     return (
       "#" +
       [r, g, b]
-        .map((value) => value.toString(16).padStart(2, "0"))
+        .map((value) => clamp(value).toString(16).padStart(2, "0"))
         .join("")
     );
   };
 
-  const hexToRgb = (hex: string): [number, number, number] => {
+  const hexToRgb = (hex: string): RGB => {
     const clean = hex.replace("#", "");
 
     return [
-      parseInt(clean.substring(0, 2), 16),
-      parseInt(clean.substring(2, 4), 16),
-      parseInt(clean.substring(4, 6), 16),
+      parseInt(clean.slice(0, 2), 16),
+      parseInt(clean.slice(2, 4), 16),
+      parseInt(clean.slice(4, 6), 16),
     ];
   };
 
-  const colorDistance = (
-    a: [number, number, number],
-    b: [number, number, number]
-  ): number => {
+  const colorDistance = (a: RGB, b: RGB): number => {
     return Math.sqrt(
       Math.pow(a[0] - b[0], 2) +
         Math.pow(a[1] - b[1], 2) +
@@ -129,324 +170,360 @@ export default function KitBuilder(): JSX.Element {
     );
   };
 
-  const extractDominantColors = (): void => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
+  const extractAndSetColors = (): void => {
+    const workingCanvas = workingCanvasRef.current;
+    const ctx = workingCanvas?.getContext("2d");
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
+    if (!workingCanvas || !ctx) return;
 
-    const colorMap = new Map<string, { count: number; rgb: [number, number, number] }>();
+    const imageData = ctx.getImageData(
+      0,
+      0,
+      workingCanvas.width,
+      workingCanvas.height
+    );
 
-    for (let i = 0; i < data.length; i += 24) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const a = data[i + 3];
+    const colorMap = new Map<string, Swatch>();
 
-      if (a < 200) continue;
+    for (let i = 0; i < imageData.data.length; i += 28) {
+      const r = imageData.data[i];
+      const g = imageData.data[i + 1];
+      const b = imageData.data[i + 2];
+      const a = imageData.data[i + 3];
 
-      // Ignore white/very light background
+      if (a < 220) continue;
       if (r > 235 && g > 235 && b > 235) continue;
+      if (r < 18 && g < 18 && b < 18) continue;
 
-      // Ignore near black shadows
-      if (r < 25 && g < 25 && b < 25) continue;
-
-      const rounded: [number, number, number] = [
-        Math.round(r / 30) * 30,
-        Math.round(g / 30) * 30,
-        Math.round(b / 30) * 30,
+      const grouped: RGB = [
+        Math.round(r / 24) * 24,
+        Math.round(g / 24) * 24,
+        Math.round(b / 24) * 24,
       ];
 
-      const key = rounded.join(",");
+      const hex = rgbToHex(grouped[0], grouped[1], grouped[2]);
+      const existing = colorMap.get(hex);
 
-      if (!colorMap.has(key)) {
-        colorMap.set(key, {
-          count: 0,
-          rgb: rounded,
+      if (existing) {
+        existing.count += 1;
+      } else {
+        colorMap.set(hex, {
+          hex,
+          rgb: grouped,
+          count: 1,
         });
       }
-
-      colorMap.get(key)!.count++;
     }
 
     const colors = Array.from(colorMap.values())
       .sort((a, b) => b.count - a.count)
-      .slice(0, 8)
-      .map((item) => ({
-        rgb: item.rgb,
-        hex: rgbToHex(item.rgb[0], item.rgb[1], item.rgb[2]),
-      }));
+      .slice(0, 10);
 
     setSwatches(colors);
+
+    if (colors.length > 0) {
+      setSelectedSwatch(colors[0]);
+      setReplacementColor(colors[0].hex);
+    }
   };
 
-  const drawCanvas = (): void => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
+  const applyColorReplacement = async (): Promise<void> => {
+    const workingCanvas = workingCanvasRef.current;
+    const ctx = workingCanvas?.getContext("2d");
 
-    if (!canvas || !ctx || !editedImageRef.current) return;
+    if (!workingCanvas || !ctx || !selectedSwatch) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.putImageData(editedImageRef.current, 0, 0);
-
-    drawLogo(ctx);
-    drawTexts(ctx);
-  };
-
-  const drawLogo = (ctx: CanvasRenderingContext2D): void => {
-    const logo = logoImageRef.current;
-    if (!logo) return;
-
-    const item = items.frontLogo;
-
-    ctx.drawImage(
-      logo,
-      item.x,
-      item.y,
-      item.width || 55,
-      item.height || 55
+    const imageData = ctx.getImageData(
+      0,
+      0,
+      workingCanvas.width,
+      workingCanvas.height
     );
-  };
 
-  const drawTexts = (ctx: CanvasRenderingContext2D): void => {
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    // Front name
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 18px Arial";
-    ctx.fillText(frontName.toUpperCase(), items.frontName.x, items.frontName.y);
-
-    // Sponsor text
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 22px Arial";
-    ctx.fillText(sponsorText.toUpperCase(), items.sponsor.x, items.sponsor.y);
-
-    // Back player name
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 28px Arial";
-    ctx.fillText(backName.toUpperCase(), items.backName.x, items.backName.y);
-
-    // Back jersey number
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 78px Arial";
-    ctx.fillText(backNumber, items.backNumber.x, items.backNumber.y);
-  };
-
-  const applyColorReplacement = (): void => {
-    if (!selectedSwatch || !editedImageRef.current) return;
-
-    const imageData = editedImageRef.current;
     const data = imageData.data;
-
     const target = selectedSwatch.rgb;
-    const replacement = hexToRgb(replaceColor);
+    const replacement = hexToRgb(replacementColor);
+
+    const targetBrightness =
+      target[0] * 0.299 + target[1] * 0.587 + target[2] * 0.114 || 1;
 
     for (let i = 0; i < data.length; i += 4) {
-      const current: [number, number, number] = [
-        data[i],
-        data[i + 1],
-        data[i + 2],
-      ];
+      const current: RGB = [data[i], data[i + 1], data[i + 2]];
 
-      const distance = colorDistance(current, target);
+      if (colorDistance(current, target) <= tolerance) {
+        const currentBrightness =
+          current[0] * 0.299 + current[1] * 0.587 + current[2] * 0.114;
 
-      if (distance <= tolerance) {
-        const shadowFactor =
-          (data[i] + data[i + 1] + data[i + 2]) /
-          (target[0] + target[1] + target[2] || 1);
+        const shadeFactor = currentBrightness / targetBrightness;
 
-        data[i] = Math.min(255, replacement[0] * shadowFactor);
-        data[i + 1] = Math.min(255, replacement[1] * shadowFactor);
-        data[i + 2] = Math.min(255, replacement[2] * shadowFactor);
+        data[i] = clamp(replacement[0] * shadeFactor);
+        data[i + 1] = clamp(replacement[1] * shadeFactor);
+        data[i + 2] = clamp(replacement[2] * shadeFactor);
       }
     }
 
-    editedImageRef.current = imageData;
-    drawCanvas();
-  };
+    ctx.putImageData(imageData, 0, 0);
 
-  const resetImage = (): void => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    const img = baseImageRef.current;
+    await updateBackgroundFromWorkingCanvas();
+    extractAndSetColors();
 
-    if (!canvas || !ctx || !img) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
-
-    editedImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    drawCanvas();
-  };
-
-  const handleLogoUpload = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ): void => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const img = new Image();
-
-    img.onload = () => {
-      logoImageRef.current = img;
-      drawCanvas();
+    const updated: Swatch = {
+      hex: replacementColor,
+      rgb: replacement,
+      count: 0,
     };
 
-    img.src = URL.createObjectURL(file);
+    setSelectedSwatch(updated);
+    setStatus(`Color changed to ${replacementColor}.`);
   };
 
-  const getPointerPosition = (
-    event: React.MouseEvent<HTMLCanvasElement>
-  ): { x: number; y: number } => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-
-    const rect = canvas.getBoundingClientRect();
-
-    return {
-      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
-    };
-  };
-
-  const hitTest = (x: number, y: number): ToolItemType | null => {
-    const logo = items.frontLogo;
-
-    if (
-      x >= logo.x &&
-      x <= logo.x + (logo.width || 55) &&
-      y >= logo.y &&
-      y <= logo.y + (logo.height || 55)
-    ) {
-      return "frontLogo";
-    }
-
-    const textItems: ToolItemType[] = [
-      "frontName",
-      "sponsor",
-      "backName",
-      "backNumber",
-    ];
-
-    for (const id of textItems) {
-      const item = items[id];
-
-      if (Math.abs(x - item.x) < 90 && Math.abs(y - item.y) < 35) {
-        return id;
-      }
-    }
-
-    return null;
-  };
-
-  const handleMouseDown = (
-    event: React.MouseEvent<HTMLCanvasElement>
-  ): void => {
-    const { x, y } = getPointerPosition(event);
-    const selectedItem = hitTest(x, y);
-
-    if (selectedItem) {
-      setDraggingId(selectedItem);
-      return;
-    }
-
-    // Select image color when clicking empty kit area
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-
-    const pixel = ctx.getImageData(x, y, 1, 1).data;
-    const clickedRgb: [number, number, number] = [
-      pixel[0],
-      pixel[1],
-      pixel[2],
-    ];
-
-    const nearest = swatches.reduce<Swatch | null>((best, swatch) => {
-      if (!best) return swatch;
-
-      const currentDistance = colorDistance(clickedRgb, swatch.rgb);
-      const bestDistance = colorDistance(clickedRgb, best.rgb);
-
-      return currentDistance < bestDistance ? swatch : best;
-    }, null);
-
-    setSelectedSwatch(nearest);
-  };
-
-  const handleMouseMove = (
-    event: React.MouseEvent<HTMLCanvasElement>
-  ): void => {
-    if (!draggingId) return;
-
-    const { x, y } = getPointerPosition(event);
-
-    setItems((prev) => ({
-      ...prev,
-      [draggingId]: {
-        ...prev[draggingId],
-        x,
-        y,
-      },
-    }));
-  };
-
-  const handleMouseUp = (): void => {
-    setDraggingId(null);
-  };
-
-  const downloadImage = (): void => {
-    const canvas = canvasRef.current;
+  const addSponsorText = (): void => {
+    const canvas = fabricRef.current;
     if (!canvas) return;
 
+    const text = createText("NEW SPONSOR", 270, 420, 28);
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+  };
+
+  const addPlayerName = (): void => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const text = createText("PLAYER NAME", 720, 245, 36);
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+  };
+
+  const addJerseyNumber = (): void => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const text = createText("10", 720, 360, 96);
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+  };
+
+  const uploadLogo = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ): Promise<void> => {
+    const file = event.target.files?.[0];
+    const canvas = fabricRef.current;
+
+    if (!file || !canvas) return;
+
+    const url = URL.createObjectURL(file);
+    const logo = await FabricImage.fromURL(url);
+
+    logo.set({
+      left: 270,
+      top: 285,
+      originX: "center",
+      originY: "center",
+      scaleX: 0.18,
+      scaleY: 0.18,
+      cornerColor: "#e5252a",
+      borderColor: "#e5252a",
+      transparentCorners: false,
+    });
+
+    canvas.add(logo);
+    canvas.setActiveObject(logo);
+    canvas.renderAll();
+
+    setStatus("Logo added. Drag or resize it on the kit.");
+  };
+
+  const deleteSelected = (): void => {
+    const canvas = fabricRef.current;
+    const activeObject = canvas?.getActiveObject();
+
+    if (!canvas || !activeObject) return;
+
+    canvas.remove(activeObject);
+    canvas.discardActiveObject();
+    canvas.renderAll();
+
+    setStatus("Selected object removed.");
+  };
+
+  const bringForward = (): void => {
+    const canvas = fabricRef.current;
+    const activeObject = canvas?.getActiveObject();
+
+    if (!canvas || !activeObject) return;
+
+    canvas.bringObjectForward(activeObject);
+    canvas.renderAll();
+  };
+
+  const sendBackward = (): void => {
+    const canvas = fabricRef.current;
+    const activeObject = canvas?.getActiveObject();
+
+    if (!canvas || !activeObject) return;
+
+    canvas.sendObjectBackwards(activeObject);
+    canvas.renderAll();
+  };
+
+  const zoomIn = (): void => {
+    const next = Math.min(1.8, Number((zoom + 0.1).toFixed(1)));
+    setZoom(next);
+    fabricRef.current?.setZoom(next);
+  };
+
+  const zoomOut = (): void => {
+    const next = Math.max(0.7, Number((zoom - 0.1).toFixed(1)));
+    setZoom(next);
+    fabricRef.current?.setZoom(next);
+  };
+
+  const resetZoom = (): void => {
+    setZoom(1);
+    fabricRef.current?.setZoom(1);
+  };
+
+  const resetEditor = async (): Promise<void> => {
+    const image = originalImageRef.current;
+    const canvas = fabricRef.current;
+
+    if (!image || !canvas) return;
+
+    canvas.clear();
+    canvas.backgroundColor = "#ffffff";
+
+    const workingCanvas = document.createElement("canvas");
+    workingCanvas.width = image.width;
+    workingCanvas.height = image.height;
+
+    const ctx = workingCanvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(image, 0, 0);
+    workingCanvasRef.current = workingCanvas;
+
+    await updateBackgroundFromWorkingCanvas();
+    extractAndSetColors();
+    addDefaultObjects();
+
+    setZoom(1);
+    canvas.setZoom(1);
+    setStatus("Editor reset.");
+  };
+
+  const downloadPng = (): void => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const dataUrl = canvas.toDataURL({
+      format: "png",
+      quality: 1,
+      multiplier: 2,
+    });
+
     const link = document.createElement("a");
-    link.download = "custom-sports-kit.png";
-    link.href = canvas.toDataURL("image/png");
+    link.href = dataUrl;
+    link.download = "custom-kit.png";
     link.click();
+
+    setStatus("PNG downloaded.");
+  };
+
+  const copyDesignJson = async (): Promise<void> => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const data = {
+      canvas: canvas.toJSON(),
+      selectedColor: selectedSwatch,
+      replacementColor,
+      tolerance,
+    };
+
+    await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    setStatus("Design JSON copied to clipboard.");
+  };
+
+  const requestQuote = (): void => {
+    setStatus("Quote request action ready. Connect this with your backend.");
   };
 
   return (
     <main className="kit-builder-page">
-      <section className="kit-builder-grid">
-        <div className="canvas-card">
-          <div className="canvas-toolbar">
-            <p>Sports Kit Builder</p>
+      <header className="builder-header">
+        <div>
+          <p>Custom Kit Builder</p>
+          <h1>Customize Soccer Uniform</h1>
+        </div>
 
-            <div>
-              <button type="button" onClick={resetImage}>
+        <button type="button" onClick={copyDesignJson}>
+          Save / Share JSON
+        </button>
+      </header>
+
+      <nav className="builder-steps" aria-label="Builder steps">
+        <span>1 Choose Mockup</span>
+        <span>2 Change Colors</span>
+        <span>3 Edit Canvas</span>
+        <span>4 Add Logo & Text</span>
+        <span>5 Export / Quote</span>
+      </nav>
+
+      <section className="builder-layout">
+        <section className="canvas-panel">
+          <div className="canvas-toolbar">
+            <p>{status}</p>
+
+            <div className="toolbar-buttons">
+              <button type="button" onClick={zoomOut}>
+                −
+              </button>
+
+              <button type="button" onClick={resetZoom}>
+                {Math.round(zoom * 100)}%
+              </button>
+
+              <button type="button" onClick={zoomIn}>
+                +
+              </button>
+
+              <button type="button" onClick={deleteSelected}>
+                Delete
+              </button>
+
+              <button type="button" onClick={bringForward}>
+                Forward
+              </button>
+
+              <button type="button" onClick={sendBackward}>
+                Backward
+              </button>
+
+              <button type="button" onClick={resetEditor}>
                 Reset
               </button>
 
-              <button type="button" onClick={downloadImage}>
-                Export PNG
+              <button type="button" onClick={downloadPng}>
+                Download
               </button>
             </div>
           </div>
 
-          <canvas
-            ref={canvasRef}
-            className="kit-canvas"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            aria-label="Sports kit editor canvas"
-          />
-        </div>
-
-        <aside className="editor-panel">
-          <div className="guide-box">
-            <p className="guide-label">Guide 1 of 6</p>
-            <h2>Choose a mockup</h2>
-            <p>The kit image is loaded as the editable mockup.</p>
+          <div className="canvas-shell">
+            <canvas ref={canvasRef} />
           </div>
+        </section>
 
-          <div className="control-box">
-            <p className="guide-label">Guide 2 of 6</p>
-            <h2>Change visible colors</h2>
+        <aside className="side-panel">
+          <section className="panel-card">
+            <div className="panel-title">
+              <span>Guide 2 of 6</span>
+              <h2>Mockup Colors</h2>
+            </div>
 
             <div className="swatch-grid">
               {swatches.map((swatch) => (
@@ -459,107 +536,111 @@ export default function KitBuilder(): JSX.Element {
                       : "swatch"
                   }
                   style={{ backgroundColor: swatch.hex }}
-                  onClick={() => setSelectedSwatch(swatch)}
-                  aria-label={`Select color ${swatch.hex}`}
+                  title={`${swatch.hex} · ${swatch.count}`}
+                  onClick={() => {
+                    setSelectedSwatch(swatch);
+                    setReplacementColor(swatch.hex);
+                  }}
+                  aria-label={`Select ${swatch.hex}`}
                 />
               ))}
+            </div>
+
+            <div className="selected-color">
+              <span
+                style={{
+                  backgroundColor: selectedSwatch?.hex || "#ffffff",
+                }}
+              />
+              <div>
+                <strong>{selectedSwatch?.hex || "No color selected"}</strong>
+                <small>Selected visible color</small>
+              </div>
             </div>
 
             <label>
               Replace with
               <input
                 type="color"
-                value={replaceColor}
-                onChange={(e) => setReplaceColor(e.target.value)}
+                value={replacementColor}
+                onChange={(event) => setReplacementColor(event.target.value)}
               />
             </label>
 
             <label>
-              Color match range: {tolerance}
+              Match range: {tolerance}
               <input
                 type="range"
-                min="20"
-                max="140"
+                min="25"
+                max="150"
                 value={tolerance}
-                onChange={(e) => setTolerance(Number(e.target.value))}
+                onChange={(event) => setTolerance(Number(event.target.value))}
               />
             </label>
 
             <button
               type="button"
-              onClick={applyColorReplacement}
+              className="primary-button"
               disabled={!selectedSwatch}
+              onClick={applyColorReplacement}
             >
               Apply Color
             </button>
-          </div>
+          </section>
 
-          <div className="control-box">
-            <p className="guide-label">Guide 3 and 4 of 6</p>
-            <h2>Edit directly on the kit</h2>
+          <section className="panel-card">
+            <div className="panel-title">
+              <span>Guide 5 of 6</span>
+              <h2>Logos and Text</h2>
+            </div>
+
+            <label>
+              Upload front logo
+              <input type="file" accept="image/*" onChange={uploadLogo} />
+            </label>
+
+            <div className="button-grid">
+              <button type="button" onClick={addSponsorText}>
+                Add Sponsor
+              </button>
+
+              <button type="button" onClick={addPlayerName}>
+                Add Player Name
+              </button>
+
+              <button type="button" onClick={addJerseyNumber}>
+                Add Number
+              </button>
+            </div>
+
             <p>
-              Click a kit color to select it, or drag the logo/name/number to
-              reposition it.
+              Double click text to edit. Drag logo or text to place it on the
+              front, shoes, or back area.
             </p>
-          </div>
+          </section>
 
-          <div className="control-box">
-            <p className="guide-label">Guide 5 of 6</p>
-            <h2>Add logos and text</h2>
+          <section className="quote-card">
+            <h2>Review & Request Quote</h2>
 
-            <label>
-              Front logo
-              <input type="file" accept="image/*" onChange={handleLogoUpload} />
-            </label>
+            <div className="summary-row">
+              <span>Mockup</span>
+              <strong>Soccer Kit</strong>
+            </div>
 
-            <label>
-              Front player name
-              <input
-                type="text"
-                value={frontName}
-                onChange={(e) => setFrontName(e.target.value)}
-              />
-            </label>
+            <div className="summary-row">
+              <span>Decoration</span>
+              <strong>Sublimation</strong>
+            </div>
 
-            <label>
-              Sponsor name
-              <input
-                type="text"
-                value={sponsorText}
-                onChange={(e) => setSponsorText(e.target.value)}
-              />
-            </label>
+            <div className="summary-row">
+              <span>Output</span>
+              <strong>PNG + JSON</strong>
+            </div>
 
-            <label>
-              Back player name
-              <input
-                type="text"
-                value={backName}
-                onChange={(e) => setBackName(e.target.value)}
-              />
-            </label>
-
-            <label>
-              Back jersey number
-              <input
-                type="text"
-                value={backNumber}
-                maxLength={2}
-                onChange={(e) =>
-                  setBackNumber(e.target.value.replace(/\D/g, ""))
-                }
-              />
-            </label>
-          </div>
-
-          <div className="control-box">
-            <p className="guide-label">Guide 6 of 6</p>
-            <h2>Export or request a quote</h2>
-
-            <button type="button" className="primary-btn" onClick={downloadImage}>
-              Download Final Mockup
+            <button type="button" className="quote-button" onClick={requestQuote}>
+              Request Quote
             </button>
-          </div>
+          </section>
         </aside>
       </section>
     </main>
