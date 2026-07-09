@@ -1,0 +1,185 @@
+.kit-builder-page {
+  min-height: 100vh;
+  padding: 24px;
+  background: #f3f6fb;
+  color: #111827;
+}
+
+.kit-builder-grid {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+}
+
+.canvas-card,
+.editor-panel {
+  background: #ffffff;
+  border: 1px solid #d8dee9;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.canvas-toolbar p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.canvas-toolbar div {
+  display: flex;
+  gap: 10px;
+}
+
+.canvas-toolbar button,
+.control-box button,
+.primary-btn {
+  min-height: 40px;
+  border: 1px solid #0284c7;
+  background: #0284c7;
+  color: #ffffff;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.canvas-toolbar button:first-child {
+  background: #ffffff;
+  color: #0284c7;
+}
+
+.control-box button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.kit-canvas {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid #e5e7eb;
+  cursor: crosshair;
+  background: #ffffff;
+}
+
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.guide-box,
+.control-box {
+  border: 1px solid #d8dee9;
+  background: #f8fbff;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.guide-label {
+  margin: 0 0 6px;
+  color: #0284c7;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.control-box h2,
+.guide-box h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.control-box p,
+.guide-box p {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.swatch {
+  height: 44px;
+  border: 2px solid #d8dee9;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.swatch.active {
+  border-color: #0284c7;
+  outline: 3px solid rgba(2, 132, 199, 0.2);
+}
+
+.control-box label {
+  display: block;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.control-box input[type="text"],
+.control-box input[type="file"],
+.control-box input[type="color"],
+.control-box input[type="range"] {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.control-box input[type="text"] {
+  min-height: 42px;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+
+.control-box input[type="color"] {
+  height: 44px;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.control-box input[type="file"] {
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.primary-btn {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .kit-builder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-panel {
+    max-height: none;
+  }
+}
